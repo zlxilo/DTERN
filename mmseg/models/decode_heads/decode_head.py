@@ -602,11 +602,6 @@ class BaseDecodeHead_clips2(nn.Module, metaclass=ABCMeta):
                      type='CrossEntropyLoss',
                      use_sigmoid=False,
                      loss_weight=1.0),
-                 loss_cluster = dict(
-                     type='ClusterLoss',
-                     num_classes = 124, 
-                     temperature = 0.05, 
-                     loss_weight=1.0),
                  decoder_params=None,
                  ignore_index=255,
                  sampler=None,
@@ -615,10 +610,7 @@ class BaseDecodeHead_clips2(nn.Module, metaclass=ABCMeta):
                  hypercorre=False,
                  cityscape=False,
                  backbone='b1',
-                 cross_method = 'CAT', # for target frame
-                 need_cluster_loss = False,
-                 need_segdeformer = True,
-                 aux_loss_decode = False,
+                 cross_method = 'Cluster', 
                  **kwargs # for reference frame
                  ):
         print("in BaseDecodeHead_clips2")
@@ -632,11 +624,7 @@ class BaseDecodeHead_clips2(nn.Module, metaclass=ABCMeta):
         self.act_cfg = act_cfg
         self.in_index = in_index
         self.cross_method = cross_method
-        self.need_cluster_loss = need_cluster_loss
-        self.need_segdeformer = need_segdeformer
-        self.aux_loss_decode = aux_loss_decode
         print("----------cross_method: ",cross_method)
-        print("----------need_cluster_loss",need_cluster_loss)
         # 配置多个损失
         if isinstance(loss_decode, dict):
             self.loss_decode = build_loss(loss_decode)
@@ -836,37 +824,40 @@ class BaseDecodeHead_clips2(nn.Module, metaclass=ABCMeta):
 
         loss = dict()
         
+        # print(seg_logit.shape, seg_label.shape)
         k = 4 #num of ratios
-        total = 2
-
-        if self.hypercorre and self.cityscape: #backbone上只比较了target
-            # print("here1")
-            assert seg_logit.shape[1]==seg_label.shape[1] + total # 4 is the number of ratio
-            num_clips=seg_label.shape[1]
-            seg_logit_ori=seg_logit[:,num_clips-1:num_clips] # target [b,1,c,h,w]
-            batch_size, _, _, ph ,pw=seg_logit_ori.shape
-            seg_logit_ori=seg_logit_ori.reshape(batch_size,-1,ph,pw) #[b,c,h,w]
-            seg_logit_lastframe=seg_logit[:,num_clips:num_clips+total].reshape(batch_size*(total),-1,ph,pw) #[b*k,c,h,w] k=4
-            batch_size, num_clips, _, h ,w=seg_label.shape
-            seg_label_ori=seg_label[:,-1].reshape(batch_size,1,h,w) # target [b,c,h,w]
-            # print(seg_label[:,-1].shape)
-            seg_label_lastframe=seg_label[:,-1:].expand(batch_size,total,1,h,w).reshape(batch_size*(total),1,h,w)
-                                                                                                
-        elif self.hypercorre:
-            if not self.aux_loss_decode: 
+        if self.cross_method == 'Cluster':
+            total = 2
+            if self.hypercorre and self.cityscape: #backbone上只比较了target
+                # print("here1")
+                assert seg_logit.shape[1]==seg_label.shape[1] + total # 4 is the number of ratio
+                num_clips=seg_label.shape[1]
+                seg_logit_ori=seg_logit[:,num_clips-1:num_clips] # target [b,1,c,h,w]
+                batch_size, _, _, ph ,pw=seg_logit_ori.shape
+                seg_logit_ori=seg_logit_ori.reshape(batch_size,-1,ph,pw) #[b,c,h,w]
+                seg_logit_lastframe=seg_logit[:,num_clips:num_clips+total].reshape(batch_size*(total),-1,ph,pw) #[b*k,c,h,w] k=4
+                batch_size, num_clips, _, h ,w=seg_label.shape
+                seg_label_ori=seg_label[:,-1].reshape(batch_size,1,h,w) # target [b,c,h,w]
+                seg_label_lastframe=seg_label[:,-1:].expand(batch_size,total,1,h,w).reshape(batch_size*(total),1,h,w)
+                                                                                                    
+            elif self.hypercorre:
+                total = 5
+                k = 2
                 if self.self_ensemble2 and seg_logit.shape[1]==seg_label.shape[1]+total:
-                    assert seg_logit.shape[1]==seg_label.shape[1] + total
+                    assert seg_logit.shape[1]==seg_label.shape[1] + total 
                     num_clips=seg_label.shape[1]
+                    # assert k == num_clips
                     seg_logit_ori=seg_logit[:,:num_clips]
                     batch_size, _, _, ph ,pw=seg_logit_ori.shape
                     seg_logit_ori=seg_logit_ori.reshape(batch_size*(num_clips),-1,ph,pw)
-                    seg_logit_lastframe=seg_logit[:,num_clips:num_clips+total].reshape(batch_size*(total),-1,ph,pw) #[b*k,c,h,w] k=4
-                    
+                    seg_logit_lastframe=seg_logit[:,num_clips:num_clips+k].reshape(batch_size*(k),-1,ph,pw) #[b*k,c,h,w] k=4
+                    seg_aux_frame = seg_logit[:,num_clips+k:].reshape(batch_size*(total-k),-1,ph,pw) #[b*(total-k),c,h,w]
                     batch_size, num_clips, chan, h ,w=seg_label.shape
                     assert chan == 1
                     seg_label_ori = seg_label.reshape(batch_size*(num_clips),1,h,w)
-                    seg_label_lastframe=seg_label[:,-1:].expand(batch_size,total,1,h,w).reshape(batch_size*(total),1,h,w)
-    
+                    seg_label_lastframe = seg_label[:,-1:].expand(batch_size,k,1,h,w).reshape(batch_size*k,1,h,w)
+                    seg_label_auxframe =  seg_label[:,:-1].reshape(batch_size*(total-k),1,h,w)       
+
             # print(seg_logit_ori.shape, seg_logit_lastframe.shape)
             seg_logit_ori = resize(
                 input=seg_logit_ori,
@@ -879,12 +870,6 @@ class BaseDecodeHead_clips2(nn.Module, metaclass=ABCMeta):
                 size=seg_label.shape[3:],
                 mode='bilinear',
                 align_corners=self.align_corners)
-            if self.aux_loss_decode:
-                seg_aux_frame = resize(
-                    input=seg_aux_frame,
-                    size=seg_label.shape[3:],
-                    mode='bilinear',
-                    align_corners=self.align_corners)
 
 
             if self.sampler is not None:
@@ -894,22 +879,13 @@ class BaseDecodeHead_clips2(nn.Module, metaclass=ABCMeta):
 
             seg_label_ori = seg_label_ori.squeeze(1)
             seg_label_lastframe = seg_label_lastframe.squeeze(1)
-            if self.aux_loss_decode:
-                seg_label_auxframe = seg_label_auxframe.squeeze(1)
-
 
             if not isinstance(self.loss_decode, nn.ModuleList):
                 losses_decode = [self.loss_decode]
             else:
                 losses_decode = self.loss_decode
             
-            if self.need_cluster_loss:
-                if not isinstance(self.loss_cluster, nn.ModuleList):
-                    loss_cluster = [self.loss_cluster]
-                else:
-                    loss_cluster = self.loss_cluster
 
-            
             for loss_decode in losses_decode:
                 # if loss_decode.loss_name not in loss:
                 if "loss_backbone" not in loss:
@@ -924,9 +900,6 @@ class BaseDecodeHead_clips2(nn.Module, metaclass=ABCMeta):
                                     seg_label_lastframe,
                                     weight=seg_weight,
                                     ignore_index=self.ignore_index)
-
-
-                    # loss[loss_decode.loss_name] = loss1+loss2+loss3
                         
                 else:
                     loss["loss_backbone"] += 0.5*loss_decode(
@@ -934,13 +907,13 @@ class BaseDecodeHead_clips2(nn.Module, metaclass=ABCMeta):
                                     seg_label_ori,
                                     weight=seg_weight,
                                     ignore_index=self.ignore_index)
-                
+
+
                     loss["loss_decode"] += 0.5*loss_decode(
                                     seg_logit_lastframe,
                                     seg_label_lastframe,
                                     weight=seg_weight,
                                     ignore_index=self.ignore_index)
-
         loss['acc_seg'] = accuracy(seg_logit_ori, seg_label_ori)
         return loss
     
