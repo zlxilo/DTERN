@@ -2,11 +2,6 @@
 # to do list:
 # Clean up the code
 
-# ---------------------------------------------------------------
-# Copyright (c) 2021, NVIDIA Corporation. All rights reserved.
-#
-# This work is licensed under the NVIDIA Source Code License
-# ---------------------------------------------------------------
 import collections
 import numpy as np
 import torch.nn as nn
