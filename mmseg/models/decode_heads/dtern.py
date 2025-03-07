@@ -1,4 +1,4 @@
-# method from paca_vit
+
 import copy
 from einops import rearrange
 import torch
