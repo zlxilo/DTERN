@@ -28,13 +28,13 @@ def get_sim_mask(query,key,threshold=0.95):
     query = F.normalize(query, dim=-1)
     key = F.normalize(key, dim=-1)
     sim = query @ key.transpose(-1, -2)  # [B,t, h*w, h*w]
-    mask_kq = (sim >= threshold).sum(dim=-1) > 0  # [B, t, h*w], 更新q
-    mask_qk = (sim >= threshold).sum(dim=-2) > 0  # [B, t, h*w], 更新k,v
+    mask_kq = (sim >= threshold).sum(dim=-1) > 0  # [B, t, h*w],
+    mask_qk = (sim >= threshold).sum(dim=-2) > 0  # [B, t, h*w], 
     mask_kq = mask_kq.view(b,-1,h,w) # [B,t, h, w]
     mask_qk = mask_qk.view(b,-1,h,w) # [B,t, h, w]
     return sim,mask_qk,mask_kq
 
-# 1. 采用加权和的方式 2.纯通道注意力
+
 class Channel_Attention_Add(nn.Module):
     def __init__(self, latent_dim,expansion_ratio=1):
         super(Channel_Attention_Add, self).__init__()
@@ -64,7 +64,7 @@ class Channel_Attention_Add(nn.Module):
         out = self.gamma * out + res
         return out
 
-def partition(x, patch_size): # 已检查
+def partition(x, patch_size): 
     """
     Args:
         x: (B, H, W, C)
@@ -79,7 +79,7 @@ def partition(x, patch_size): # 已检查
     return patches
 
 
-def reverse(patches, patch_size, H, W): #已检查
+def reverse(patches, patch_size, H, W): 
     """
     Args:
         patches: (num_patches*B, patch_size, patch_size, C)
@@ -166,115 +166,7 @@ class PatchProjection(nn.Module):
         x = self.reduction(x)
 
         return x
-    
 
-class Attention(nn.Module):
-    """ Basic attention of IPSA and CPSA.
-
-    Args:
-        dim (int): Number of input channels.
-        patch_size (tuple[int]): Patch size.
-        num_heads (int): Number of attention heads.
-        qkv_bias (bool, optional):  If True, add a learnable bias to query, key, value.
-        qk_scale (float | None, optional): Default qk scale is head_dim ** -0.5.
-        attn_drop (float, optional): Dropout ratio of attention weight.
-        proj_drop (float, optional): Dropout ratio of output.
-        rpe (bool): Use relative position encoding or not.
-    """
-
-    def __init__(self, dim, patch_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0., rpe=True,attn_type="ipsa",select = False):
-        super().__init__()
-        self.dim = dim
-        self.patch_size = patch_size  # Ph, Pw
-        self.num_heads = num_heads
-        head_dim = dim // num_heads
-        self.scale = qk_scale or head_dim ** -0.5
-        self.rpe = rpe
-        self.attn_type = attn_type
-        if select:
-            if self.attn_type == "ipsa":
-                self.select_token = None
-            else:
-                self.select_channel = None
-
-        if self.rpe:
-            # define a parameter table of relative position bias
-            self.relative_position_bias_table = nn.Parameter(
-                torch.zeros((2 * patch_size[0] - 1) * (2 * patch_size[1] - 1), num_heads))  # 2*Ph-1 * 2*Pw-1, nH
-
-            # get pair-wise relative position index for each token inside one patch
-            coords_h = torch.arange(self.patch_size[0])
-            coords_w = torch.arange(self.patch_size[1])
-            coords = torch.stack(torch.meshgrid([coords_h, coords_w]))  # 2, Ph, Pw
-            coords_flatten = torch.flatten(coords, 1)  # 2, Ph*Pw
-            relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]  # 2, Ph*Pw, Ph*Pw
-            relative_coords = relative_coords.permute(1, 2, 0).contiguous()  # Ph*Pw, Ph*Pw, 2
-            relative_coords[:, :, 0] += self.patch_size[0] - 1  # shift to start from 0
-            relative_coords[:, :, 1] += self.patch_size[1] - 1
-            relative_coords[:, :, 0] *= 2 * self.patch_size[1] - 1
-            relative_position_index = relative_coords.sum(-1)  # Ph*Pw, Ph*Pw
-            self.register_buffer("relative_position_index", relative_position_index)
-            trunc_normal_(self.relative_position_bias_table, std=.02)
-
-        self.q = nn.Linear(dim, dim, bias=qkv_bias)
-        self.kv = nn.Linear(dim, dim * 2, bias=qkv_bias)
-        self.attn_drop = nn.Dropout(attn_drop)
-        self.proj = nn.Linear(dim, dim)
-        self.proj_drop = nn.Dropout(proj_drop)
-
-        self.softmax = nn.Softmax(dim=-1)
-        self.select = select
-        
-    def forward(self, x,memory=None):
-        """
-        Args: input_cpsa torch.Size([3072, 1, 225]) torch.Size([3072, 1, 225])
-            x: input features with shape of (num_patches*B, N, C)
-            memory: input features with shape of (num_patches*B*T, N, C)
-        """
-        B_, N, C = x.shape
-        memory = memory.view(B_, -1, N, C)  # B, T,N, C # 一起起效果，还是加上局部的time_refine? for time_refine
-        # qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
-        # q, k, v = qkv[0], qkv[1], qkv[2]
-
-        if self.select: #好像只适用于静态
-            if self.attn_type == "ipsa":
-                if self.select_token is None:
-                    self.select_token = nn.Parameter(torch.eye(N,requires_grad=True)).unsqueeze(0).unsqueeze(0).expand(memory.shape[0],memory.shape[1],-1,-1)
-            else:
-                if self.select_channel is None:
-                    self.select_channel = nn.Parameter(torch.eye(C,requires_grad=True)).unsqueeze(0).unsqueeze(0).expand(memory.shape[0],memory.shape[1],-1,-1)
-        # 把select用在mask上避免矛盾    
-        
-        q = self.q(x) # [B, T, N, C]
-        q = q.reshape(B_, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3).unsqueeze(1) # nP*B, nH, N, C
-        kv = self.kv(memory) ## [B, T, N, 2C]
-
-        if self.select:
-            if self.attn_type == "ipsa":
-                kv = self.select_token @ kv
-            else:
-                kv =  kv @ self.select_channel
-
-        kv=kv.reshape(B_, -1, N, 2, self.num_heads, C // self.num_heads).permute(3, 0, 1, 4, 2, 5) # nP*B, T, nH, N, C
-        k, v = kv[0], kv[1]
-        
-        q = q * self.scale
-        # print("q,k,v",q.shape,k.shape,v.shape)
-        attn = (q @ k.transpose(-2, -1)) #(nP*B, T, nH, N, N)
-
-        if self.rpe:
-            relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
-                self.patch_size[0] * self.patch_size[1], self.patch_size[0] * self.patch_size[1], -1)  # Wh*Ww,Wh*Ww,nH
-            relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
-            attn = attn + relative_position_bias.unsqueeze(0).unsqueeze(0)  # nP*B, T, nH, N, N 
-
-        attn = self.softmax(attn)
-        attn = self.attn_drop(attn)
-
-        x = (attn @ v).transpose(2, 3).reshape(B_,-1, N, C) # [nP*B, T,nH,  N, N] * [nP*B, T, nH,N, C] -> [nP*B, T,nH, N, C]
-        x = self.proj(x)
-        x = self.proj_drop(x)
-        return x #[nP*B, T, N, C]
 
 # depth-wise conv
 class DWConv(nn.Module):
@@ -341,7 +233,7 @@ class Cluster_Block2(nn.Module):
             print("no_local:",no_local,",no_global:",no_global)
             if backbone == 'b0' or cityscape:
                 dw_kernel_size= [13,11,9,7]
-            self.SRPS = SRPS2(dim, (15, 10), nn.BatchNorm2d, 11,dw_kernel_size=dw_kernel_size,no_local=no_local,no_global=no_global) #(30,15) (20,12) (15,10)
+            self.SRPS = SRPS2(dim, (15, 10), nn.BatchNorm2d, 11,dw_kernel_size=dw_kernel_size,no_local=no_local,no_global=no_global)
             self.Clustering = nn.Sequential(
                     # nn.Conv2d(dim,dim,kernel_size=3,stride=1,padding=1),
                     # nn.GELU(),
@@ -366,7 +258,7 @@ class Cluster_Block2(nn.Module):
 class Cluster_layer(nn.Module):
     def __init__(self, dim, num_heads,  num_clusters,mlp_ratio=4., qkv_bias=True, 
                  qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
-                 act_layer=nn.GELU, norm_layer=nn.LayerNorm,t=3,inner_center = True,use_kmeans = False,backbone='b1',cityscape=False):
+                 act_layer=nn.GELU, norm_layer=nn.LayerNorm,t=3,inner_center = True,backbone='b1',cityscape=False):
         super().__init__()
         self.dim = dim
         self.num_heads = num_heads
@@ -394,16 +286,11 @@ class Cluster_layer(nn.Module):
         self.top_down_transform1 = torch.nn.parameter.Parameter(torch.eye(num_clusters), requires_grad=True)
         self.prompt2 = torch.nn.parameter.Parameter(torch.randn(num_clusters, requires_grad=True)) 
         self.top_down_transform2 = torch.nn.parameter.Parameter(torch.eye(num_clusters), requires_grad=True)
-        self.cluster_with_t = cluster_with_t # 是否用t聚合
-        if self.cluster_with_t:
-            print("using cluster_with_t by channel attention, t:{}".format(t+1)) 
-            self.fusion = Channel_Attention_Add(t+1)
 
     def forward(self,x,H,W,z=None,mem=None,t=3):
         '''
             x:[b,n,c]
             mem:[bt,n,c]
-            z:[b,num_clusters,tn] # 选择迭代更新
         '''
         res = x
         assigned_results = None
@@ -427,12 +314,8 @@ class Cluster_layer(nn.Module):
             center_x = rearrange(x,"(b t) n c -> b t n c",t=t)
             center = center @ center_x #[b,t,num_clusters,c]
             C_in = center[:,-1] + center[:,:-1].sum(dim=1) 
-
-
         else:
-            
             if z is not None:
-
                 z = rearrange(z,'b c n -> b n c') #(b,tn,num_clusters)
                 cluster_x_z = rearrange(cluster_x_z,'b c n -> b n c') #(b,tn,num_clusters)
                 # select:
@@ -454,7 +337,6 @@ class Cluster_layer(nn.Module):
                 cluster_x_z = rearrange(cluster_x_z,"b n c -> b c n")
 
             if self.inner_center:
-
                 center = rearrange(cluster_x_z,"b c (t n) -> b t c n",t = t)
                 assigned_results = center.clone()
                 center = center.softmax(dim=-1) # [b,t,num_clusters,n]
@@ -463,7 +345,7 @@ class Cluster_layer(nn.Module):
                 cos_sim = torch.sigmoid( 
                     (self.sim_beta + self.sim_alpha * F.cosine_similarity(center[:,-1].unsqueeze(1),center[:,:-1],dim=-1))
                 ) #[b,t,num_cluster]
-                C_in = center[:,-1] + (cos_sim.unsqueeze(-1) * center[:,:-1]).sum(dim=1) # 增强表示
+                C_in = center[:,-1] + (cos_sim.unsqueeze(-1) * center[:,:-1]).sum(dim=1) 
             
             else:
                 cluster_x = cluster_x_z.softmax(dim=-1) 
@@ -658,10 +540,7 @@ class DTERN(nn.Module):
         out_memory_frames = []
         T_pre = query_frame[0].shape[1]
         T_tg = supp_frame[0].shape[1]
-        # print(len(supp_frame),supp_frame[0].shape)
-        # print(len(query_frame),query_frame[0].shape)
-        # 这里必须要去掉冗余才行
-        # 测试先resize到最大，再融合下采样，用于先弥补小分辨率的问题
+
         tg_size = supp_frame[-2].shape[-2:]
         if not self.ratio_fusio:
             k_ratio = -2
