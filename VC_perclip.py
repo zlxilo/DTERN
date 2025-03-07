@@ -81,7 +81,7 @@ def get_common(list_,predlist,clip_num,h,w):
 
 DIR='data/vspw//VSPW_480p'
 
-Pred='/root/workspace/XU/Code/VSS-MRCFA-main/results/Cluster_Segdeformer_124_capa_vit_cluster_block2_srps2_mit_b0'
+Pred='./results/Cluster_Segdeformer_124_capa_vit_cluster_block2_srps2_mit_b0'
 split = 'val.txt'
 
 with open(os.path.join(DIR,split),'r') as f:
