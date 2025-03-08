@@ -65,7 +65,7 @@ def get_common(list_,predlist,clip_num,h,w):
     for i in range(len(list_)-clip_num):
         global_common = np.ones((h,w))
         predglobal_common = np.ones((h,w))
-        for j in range(1,clip_num): #连续预测
+        for j in range(1,clip_num): 
             common = (list_[i] == list_[i+j])
             global_common = np.logical_and(global_common,common)
             pred_common = (predlist[i]==predlist[i+j])
@@ -81,7 +81,7 @@ def get_common(list_,predlist,clip_num,h,w):
 
 DIR='data/vspw//VSPW_480p'
 
-Pred='./results/Cluster_Segdeformer_124_capa_vit_cluster_block2_srps2_mit_b0'
+Pred='./results/mit_b0'
 split = 'val.txt'
 
 with open(os.path.join(DIR,split),'r') as f:
@@ -128,7 +128,6 @@ for video in videolist:
         # pred = np.array(pred)
         pred_np = os.path.join(Pred,video,imgname.replace('.png','.npy'))
         
-        # 这里是bug
         if not os.path.exists(pred_np):
             print("no np: ", pred_np)
             
