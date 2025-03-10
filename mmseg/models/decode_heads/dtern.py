@@ -8,7 +8,7 @@ import time
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 import math
 from .transformer_module import SelfAttentionLayer, CrossAttentionLayer, FFNLayer
-from mmseg.models.utils import SelfAttentionBlockWithTime,RCA,LSKblock,SRPS,SRPS2,kmeans,recompute_cluster_centers
+from mmseg.models.utils import SelfAttentionBlockWithTime,SRPS
 from mmcv.cnn import ConvModule
 from mmseg.ops import resize
 from einops.layers.torch import Rearrange
