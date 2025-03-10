@@ -147,7 +147,6 @@ class SegFormerHead_clips2_resize_1_8_Cluster_SegDeformer_ensemble4(BaseDecodeHe
             self.linear_pred1 = nn.Conv2d(embedding_dim*2, self.num_classes, kernel_size=1)
 
         print("-------in model: cross_method:",self.cross_method) 
-        #cluster(paca-vit)
         print("---------self.num_class:",self.num_classes)
 
         self.dtern=DTERN(dim=self.in_channels, num_layers=self.num_layer,t=3,time_decoder_layer=3,embedding_dim=embedding_dim,num_classes=self.num_classes,
@@ -203,7 +202,6 @@ class SegFormerHead_clips2_resize_1_8_Cluster_SegDeformer_ensemble4(BaseDecodeHe
         
         out_cls_mid = None
         supp_feats,out_cls_mid,cluster_centers,mem_out,assigned_results=self.dtern(query_frame, supp_frame,img_metas = img_metas) # target: [2 [b,c,h,w]] cluster_centers:[b,t,num_clusters,c,h,w]
-        # 测试只要decoder结果
         if self.test_only_decoder:
             x2 = resize(self.linear_pred1(supp_feats[0]), size=(h,w),mode='bilinear',align_corners=False)
             x2 = x2.unsqueeze(1)
