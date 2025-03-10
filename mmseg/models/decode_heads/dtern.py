@@ -181,30 +181,7 @@ class DWConv(nn.Module):
         x = x.flatten(2).transpose(1, 2)
         return x
 
-
 class Cluster_Block(nn.Module):
-    def __init__(self, dim,  num_clusters,mlp_ratio=4., qkv_bias=True, 
-                 qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
-                 act_layer=nn.GELU, norm_layer=nn.LayerNorm):
-        super().__init__()
-        self.dim = dim
-        self.mlp_ratio = mlp_ratio
-        self.num_clusters = num_clusters
-        self.norm1 = norm_layer(dim)
-        self.Clustering = nn.Sequential(
-            nn.Conv2d(dim,dim,kernel_size=7,stride=1,padding=3),
-            nn.GELU(),
-            nn.Conv2d(dim,dim,kernel_size=1,stride=1,padding=0),
-            nn.GELU(),
-            nn.Conv2d(dim,num_clusters,kernel_size=1,stride=1,padding=0,bias=False),
-            Rearrange("b c h w -> b c (h w)")
-        )
-    
-    def forward(self,x,H,W): #bt,n,c for all
-        x = rearrange(x, "B (H W) C -> B C H W", H=H, W=W).contiguous()
-        return self.Clustering(x)
-
-class Cluster_Block2(nn.Module):
     def __init__(self, dim,  num_clusters,mlp_ratio=4., qkv_bias=True, 
                  qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
                  act_layer=nn.GELU, norm_layer=nn.LayerNorm,use_SRPS=True,backbone='b1',cityscape=False):
@@ -226,14 +203,13 @@ class Cluster_Block2(nn.Module):
             )
 
         elif self.use_SRPS:
-            # self.SRPS = SRPS(dim, (15, 10), nn.BatchNorm2d, 11) #(30,15) (20,12) (15,10)
             dw_kernel_size = [11,9,7,5]
             no_local = False
             no_global = False
             print("no_local:",no_local,",no_global:",no_global)
             if backbone == 'b0' or cityscape:
                 dw_kernel_size= [13,11,9,7]
-            self.SRPS = SRPS2(dim, (15, 10), nn.BatchNorm2d, 11,dw_kernel_size=dw_kernel_size,no_local=no_local,no_global=no_global)
+            self.SRPS = SRPS(dim, (15, 10), nn.BatchNorm2d, 11,dw_kernel_size=dw_kernel_size,no_local=no_local,no_global=no_global)
             self.Clustering = nn.Sequential(
                     # nn.Conv2d(dim,dim,kernel_size=3,stride=1,padding=1),
                     # nn.GELU(),
@@ -271,9 +247,7 @@ class Cluster_layer(nn.Module):
 
         self.sim_alpha = nn.Parameter(torch.ones(1))
         self.sim_beta = nn.Parameter(torch.zeros(1))
-        # self.clustering = Cluster_Block(dim,num_clusters,mlp_ratio=mlp_ratio)
-
-        self.clustering = Cluster_Block2(dim,num_clusters,mlp_ratio=mlp_ratio,backbone=backbone,cityscape=cityscape) # 
+        self.clustering = Cluster_Block(dim,num_clusters,mlp_ratio=mlp_ratio,backbone=backbone,cityscape=cityscape) # 
 
         self.q = nn.Linear(dim, dim)
         self.k = nn.Linear(dim, dim)
@@ -301,12 +275,13 @@ class Cluster_layer(nn.Module):
         else:
             t = 1
     
-        # clustering
+        # CAM
         cluster_x_z = self.clustering(x,H,W) # [bt,num_clusters,n]
         cluster_x_z = rearrange(cluster_x_z,"(b t) c n -> b t c n",b=res.shape[0])
 
         cluster_x_z = cluster_x_z.permute(0,2,1,3).contiguous().flatten(2) # [b,num_clusters,tn]
 
+        # SAM
         if self.test_SAM:
             # # inner_time_cluster + cross_time_cluster   
             center = rearrange(cluster_x_z,"b c (t n) -> b t c n",t = t)
@@ -353,6 +328,7 @@ class Cluster_layer(nn.Module):
                 x = rearrange(x,'(b t) n c -> b (t n) c',b=res.shape[0])
                 C_in = cluster_x @ x 
 
+        # FEM
         C_in = self.norm1(C_in)
         src = rearrange(res,"b n c -> n b c")
         mem = rearrange(C_in, "b n c -> n b c")
