@@ -35,35 +35,6 @@ def get_sim_mask(query,key,threshold=0.95):
     return sim,mask_qk,mask_kq
 
 
-class Channel_Attention_Add(nn.Module):
-    def __init__(self, latent_dim,expansion_ratio=1):
-        super(Channel_Attention_Add, self).__init__()
-        self._latent_dim = latent_dim
-        self.temperature = nn.Parameter(torch.ones(1))
-        self.softmax = nn.Softmax(dim=-1)
-        self.sigmoid = nn.Sigmoid()
-        self.mlp = nn.Sequential(
-            nn.Linear(latent_dim, expansion_ratio*latent_dim),
-            # nn.BatchNorm1d(expansion_ratio*latent_dim),
-            # nn.ReLU(),
-            # nn.Linear(expansion_ratio*latent_dim, latent_dim)
-        )
-        self.gamma = nn.Parameter(torch.zeros(1))
-
-    def forward(self, x): #[b,t,c,n]
-        res = x
-        n = x.shape[-1]
-        x = rearrange(x,"b t c n-> b t (c n)", t = self._latent_dim)
-        _max,_ = x.max(dim=-1)
-        _avg = x.mean(dim=-1)
-        glb = _max + _avg #[b,t]
-        glb = self.mlp(glb)
-        attn = F.softmax(glb, dim=1)
-        x =  x * attn.unsqueeze(-1)
-        out = rearrange(x,"b t (c n) -> b t c n",n=n)
-        out = self.gamma * out + res
-        return out
-
 def partition(x, patch_size): 
     """
     Args:
