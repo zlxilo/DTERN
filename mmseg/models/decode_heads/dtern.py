@@ -212,7 +212,7 @@ class Cluster_layer(nn.Module):
         self.num_clusters = num_clusters
         self.norm1 = norm_layer(dim)
         self.inner_center = inner_center
-        self.use_kmeans = use_kmeans # only test kmeans
+        # self.use_kmeans = use_kmeans # only test kmeans
 
         self.test_SAM = False
 
@@ -344,9 +344,9 @@ class GTEM(nn.Module):
         self.q = nn.Linear(dim, dim, bias=qkv_bias)
         self.k = nn.Linear(dim, dim, bias=qkv_bias)
 
-        self.cls_token = nn.Parameter(torch.zeros(1, T, num_classes, dim)) 
+        self.FCC = nn.Parameter(torch.zeros(1, T, num_classes, dim)) 
         
-        self.prop_token = nn.Parameter(torch.zeros(1, num_classes, dim)) 
+        self.VCC = nn.Parameter(torch.zeros(1, num_classes, dim)) 
         
         self.cross_attn = SelfAttentionBlockWithTime(
             key_in_channels=dim,
@@ -367,8 +367,8 @@ class GTEM(nn.Module):
             act_cfg=dict(type='ReLU'))
         
         self.T = T
-        trunc_normal_(self.cls_token, std=.02)
-        trunc_normal_(self.prop_token, std=.02)
+        trunc_normal_(self.FCC, std=.02)
+        trunc_normal_(self.VCC, std=.02)
         self.apply(self._init_weights) 
         
     def _init_weights(self, m):
@@ -392,12 +392,12 @@ class GTEM(nn.Module):
         assert t == self.T, "Input tensor has wrong time"
         x = x.flatten(3).transpose(-1, -2) #[b,t,n,c]
         B, T, N, C = x.shape
-        cls_tokens = self.cls_token.expand(B, -1, -1, -1) # [B, T, num_classes, dim]
-        prop_tokens = self.prop_token.unsqueeze(1).expand(B, T, -1, -1) 
+        FCC = self.FCC.expand(B, -1, -1, -1) # [B, T, num_classes, dim]
+        VCC = self.VCC.unsqueeze(1).expand(B, T, -1, -1) 
         
         # B, T, N, C = x.shape
         q = self.q(x).reshape(B, T, N, self.num_heads, C // self.num_heads).permute(0, 1, 3, 2, 4)
-        k = self.k(cls_tokens).unsqueeze(1).reshape(B, T, self.num_classes, self.num_heads, C // self.num_heads).permute(0, 1, 3, 2, 4) #[B, T, num_heads, num_classes, dim]
+        k = self.k(FCC).unsqueeze(1).reshape(B, T, self.num_classes, self.num_heads, C // self.num_heads).permute(0, 1, 3, 2, 4) #[B, T, num_heads, num_classes, dim]
         
         k = k * self.scale
         attn = (k @ q.transpose(-2, -1)).squeeze(2).transpose(-2, -1) 
@@ -405,7 +405,7 @@ class GTEM(nn.Module):
         out_cls_mid = attn.permute(0, 1, 3, 2).reshape(b, t, -1, h, w)
         x_cls = out_cls_mid.flatten(3).transpose(-1, -2)   # [b,t,n,c]
         x_cls = x_cls.softmax(dim=-1)
-        cls = x_cls @ prop_tokens
+        cls = x_cls @ VCC
         cls = cls.permute(0, 1, 3, 2).reshape(b, t, c, h, w) 
         x2 = self.cross_attn(res, cls)
         out = res + x2 
