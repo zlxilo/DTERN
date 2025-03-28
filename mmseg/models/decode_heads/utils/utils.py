@@ -42,7 +42,7 @@ PALETTE = [[120, 120, 120], [180, 120, 120], [6, 230, 230], [80, 50, 50],
                [255, 204, 0], [255, 0, 143], [0, 255, 235], [133, 255, 0]
                ]
 
-save_path_root='/cluster/home/celiuce/code2/SegFormer/'
+
 
 def save_cluster_labels(labels, save_id):
 	## labels.shape: h,w
