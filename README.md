@@ -6,4 +6,42 @@ Video semantic segmentation aims to assign a class label for each pixel in every
 
 ![block images](https://github.com/zlxilo/_DTERN/blob/main/overview.png)
 
+## Note
+This is a preliminary version for early access and I will clean it for better readability.
+
+## Installation
+Please follow the guidelines in [MMSegmentation v0.13.0](https://github.com/open-mmlab/mmsegmentation/tree/v0.13.0).
+
+Other requirements:
+```timm==0.3.0, CUDA11.0, pytorch==1.7.1, torchvision==0.8.2, mmcv==1.3.0, opencv-python==4.5.2```
+
+Download this repository and install by:
+```
+cd DTERN && pip install -e . --user
+```
+## Usage
+### Data preparation
+Please follow [VSPW](https://github.com/sssdddwww2/vspw_dataset_download) to download VSPW 480P dataset.
+After correctly downloading, the file system is as follows:
+```
+vspw-480
+├── video1
+    ├── origin
+        ├── .jpg
+    └── mask
+        └── .png
+```
+### Test
+1. Download the trained weights from [here](https://drive.google.com/drive/folders/1TGP32UjOXYA-UM12ljvwUTBqCT0Hzatg?usp=drive_link).
+2. Run the following commands:
+```
+./tools/dist_test.sh local_configs/dtern/B1/dtern.b1.480x480.vspw2.160k.py /path/to/checkpoint_file <GPU_NUM> \
+--out /path/to/save_results/res.pkl
+```
+### Training
+```
+./tools/dist_train.sh local_configs/dtern/B1/dtern.b1.480x480.vspw2.160k.py 4 --work-dir model_path/vspw2/work_dirs_4g_b1
+```
+## License
+This project is only for academic use. 
 
