@@ -31,13 +31,6 @@ vspw-480
     └── mask
         └── .png
 ```
-### Test
-1. Download the trained weights from [here](https://drive.google.com/drive/folders/1TGP32UjOXYA-UM12ljvwUTBqCT0Hzatg?usp=drive_link).
-2. Run the following commands:
-```
-./tools/dist_test.sh local_configs/dtern/B1/dtern.b1.480x480.vspw2.160k.py /path/to/checkpoint_file <GPU_NUM> \
---out /path/to/save_results/res.pkl
-```
 ### Training
 ```
 ./tools/dist_train.sh local_configs/dtern/B1/dtern.b1.480x480.vspw2.160k.py 4 --work-dir model_path/vspw2/work_dirs_4g_b1
