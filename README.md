@@ -35,6 +35,7 @@ vspw-480
 ```
 ./tools/dist_train.sh local_configs/dtern/B1/dtern.b1.480x480.vspw2.160k.py 4 --work-dir model_path/vspw2/work_dirs_4g_b1
 ```
+### [Weights](https://drive.google.com/drive/folders/1TGP32UjOXYA-UM12ljvwUTBqCT0Hzatg?usp=drive_link)
 ## License
 This project is only for academic use. 
 
