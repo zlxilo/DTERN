@@ -6,9 +6,6 @@ Video semantic segmentation aims to assign a class label for each pixel in every
 
 ![block images](https://github.com/zlxilo/_DTERN/blob/main/overview.png)
 
-## Note
-This is a preliminary version for early access and all code will be released once the remaining work is finished..
-
 ## Installation
 Please follow the guidelines in [MMSegmentation v0.13.0](https://github.com/open-mmlab/mmsegmentation/tree/v0.13.0).
 
